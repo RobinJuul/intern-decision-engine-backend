@@ -44,53 +44,132 @@ public class DecisionEngine {
             return new Decision(null, null, e.getMessage());
         }
 
-        int outputLoanAmount;
+
         creditModifier = getCreditModifier(personalCode);
 
         if (creditModifier == 0) {
             throw new NoValidLoanException("No valid loan found!");
         }
+        if (loanAmount == 0) {
+            // If loanAmount is 0, find the maximum possible loan amount
+            Decision maxLoanDecision = findMaximumLoanAmount(loanPeriod);
 
-        while (highestValidLoanAmount(loanPeriod) < DecisionEngineConstants.MINIMUM_LOAN_AMOUNT) {
-            loanPeriod++;
+            if (maxLoanDecision.getLoanAmount() > 0) {
+                return maxLoanDecision;
+            } else {
+                throw new NoValidLoanException(maxLoanDecision.getErrorMessage());
+            }
         }
 
-        if (loanPeriod <= DecisionEngineConstants.MAXIMUM_LOAN_PERIOD) {
-            outputLoanAmount = Math.min(DecisionEngineConstants.MAXIMUM_LOAN_AMOUNT, highestValidLoanAmount(loanPeriod));
-        } else {
-            throw new NoValidLoanException("No valid loan found!");
+        double creditScore = getCreditScore(loanAmount, loanPeriod);
+
+        if (creditScore >= 0.1){
+            // Scenario 1: User qualifies for a larger loan, return the maximum amount they qualify for
+            Decision maxLoanDecision = findMaximumLoanAmount(loanPeriod);
+
+            //Extracting the maximum loan amount from the Decision object
+            Integer maxLoanAmount = maxLoanDecision.getLoanAmount();
+            if (maxLoanAmount != null && maxLoanAmount > loanAmount) {
+                return new Decision(maxLoanAmount, loanPeriod, null);
+            } else {
+                return new Decision(loanAmount.intValue(), loanPeriod, null);
+            }
+        } else{
+            // Scenario 2: Requested amount is too high, reduce amount or increase period
+            Decision validLoan = findValidLoanAmount(loanAmount, loanPeriod);
+            if (validLoan.getLoanAmount() > 0) {
+                return validLoan;
+            } else {
+                throw new NoValidLoanException("No valid loan found!");
+            }
         }
 
-        return new Decision(outputLoanAmount, loanPeriod, null);
+
     }
 
     /**
-     * Calculates the largest valid loan for the current credit modifier and loan period.
-     *
-     * @return Largest valid loan amount
+     * Finds the valid loan amount and period. If loan amount is too high, it is lowered until it is valid and if period
+     * is too low, it is highered until a valid amount and period are found.
+     * @param loanAmount Requested loan amount
+     * @param loanPeriod Requested loan period
+     * @return A Decision object containing the approved loan amount and period, and an error message (if any)
      */
-    private int highestValidLoanAmount(int loanPeriod) {
-        return creditModifier * loanPeriod;
+    private Decision findValidLoanAmount(Long loanAmount, int loanPeriod) {
+        int currentLoanAmount = loanAmount.intValue();
+
+        // Adjusting loan amount, if not valid, decreasing by 100.
+        while (currentLoanAmount >= DecisionEngineConstants.MINIMUM_LOAN_AMOUNT) {
+            int testPeriod = loanPeriod;
+
+            // Adjusting loan period, if not valid, increasing by 6 months.
+            while (testPeriod <= DecisionEngineConstants.MAXIMUM_LOAN_PERIOD) {
+                double creditScore = getCreditScore((long) currentLoanAmount, testPeriod);
+
+                if (creditScore >= 0.1) {
+                    return new Decision(currentLoanAmount, testPeriod, null);
+                }
+                testPeriod += 6;
+            }
+            currentLoanAmount -= 100;
+        }
+        return new Decision(0, 0, "No valid loan found after adjusting amount and period.");
     }
 
     /**
-     * Calculates the credit modifier of the customer to according to the last four digits of their ID code.
-     * Debt - 0000...2499
-     * Segment 1 - 2500...4999
-     * Segment 2 - 5000...7499
-     * Segment 3 - 7500...9999
+     * Calculates the maximum loan amount possible for current customer Credit score must be equal or greater than 0.1.
+     * Otherwise, the maximum loan amount is decreased until it is of correct value.
+     * @param loanPeriod     Requested loan period
+     * @return maximum loan amount possible to be lent to the customer
+     */
+    private Decision findMaximumLoanAmount(int loanPeriod) {
+        Long maxLoanAmount = Long.valueOf(DecisionEngineConstants.MAXIMUM_LOAN_AMOUNT);
+
+        while (maxLoanAmount >=  DecisionEngineConstants.MINIMUM_LOAN_AMOUNT) {
+            int testPeriod = loanPeriod;
+
+            while (testPeriod <= DecisionEngineConstants.MAXIMUM_LOAN_PERIOD) {
+                double creditScore = getCreditScore(maxLoanAmount, testPeriod);
+
+                if (creditScore >= 0.1) {
+                    return new Decision(maxLoanAmount.intValue(), testPeriod, null);
+                }
+                testPeriod += 6;
+            }
+            maxLoanAmount -= 100;
+        }
+        return new Decision(0, loanPeriod, "No valid loan found after adjusting amount and period.");
+    }
+
+
+    /**
+     * Calculates customer's credit score using the proper algorithm.
+     * Used algorithm: credit score = ((creditModifier / loanAmount) * loanPeriod) / 10
+     * @param loanAmount Requested loan amount
+     * @param loanPeriod Requested loan period
+     * @return Customer's credit score.
+     */
+    private double getCreditScore(Long loanAmount, int loanPeriod) {
+        return (((double) creditModifier / loanAmount) * loanPeriod) / 10;
+    }
+
+    /**
+     * Calculates the credit modifier of the customer to according to the last two digits of their ID code.
+     * Debt - 00...74
+     * Segment 1 - 75...84
+     * Segment 2 - 85...94
+     * Segment 3 - 95...99
      *
      * @param personalCode ID code of the customer that made the request.
      * @return Segment to which the customer belongs.
      */
     private int getCreditModifier(String personalCode) {
-        int segment = Integer.parseInt(personalCode.substring(personalCode.length() - 4));
+        int segment = Integer.parseInt(personalCode.substring(personalCode.length() - 2));
 
-        if (segment < 2500) {
+        if (segment < 75) {
             return 0;
-        } else if (segment < 5000) {
+        } else if (segment < 85 ) {
             return DecisionEngineConstants.SEGMENT_1_CREDIT_MODIFIER;
-        } else if (segment < 7500) {
+        } else if (segment < 95 ) {
             return DecisionEngineConstants.SEGMENT_2_CREDIT_MODIFIER;
         }
 
@@ -114,12 +193,12 @@ public class DecisionEngine {
         if (!validator.isValid(personalCode)) {
             throw new InvalidPersonalCodeException("Invalid personal ID code!");
         }
-        if (!(DecisionEngineConstants.MINIMUM_LOAN_AMOUNT <= loanAmount)
-                || !(loanAmount <= DecisionEngineConstants.MAXIMUM_LOAN_AMOUNT)) {
+        if ((DecisionEngineConstants.MINIMUM_LOAN_AMOUNT > loanAmount)
+                || (loanAmount > DecisionEngineConstants.MAXIMUM_LOAN_AMOUNT)) {
             throw new InvalidLoanAmountException("Invalid loan amount!");
         }
-        if (!(DecisionEngineConstants.MINIMUM_LOAN_PERIOD <= loanPeriod)
-                || !(loanPeriod <= DecisionEngineConstants.MAXIMUM_LOAN_PERIOD)) {
+        if ((DecisionEngineConstants.MINIMUM_LOAN_PERIOD > loanPeriod)
+                || (loanPeriod > DecisionEngineConstants.MAXIMUM_LOAN_PERIOD)) {
             throw new InvalidLoanPeriodException("Invalid loan period!");
         }
 
