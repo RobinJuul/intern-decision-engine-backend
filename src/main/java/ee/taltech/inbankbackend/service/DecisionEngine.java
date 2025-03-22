@@ -8,6 +8,9 @@ import ee.taltech.inbankbackend.exceptions.InvalidPersonalCodeException;
 import ee.taltech.inbankbackend.exceptions.NoValidLoanException;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
+import java.time.Period;
+
 /**
  * A service class that provides a method for calculating an approved loan amount and period for a customer.
  * The loan amount is calculated based on the customer's credit modifier,
@@ -188,11 +191,13 @@ public class DecisionEngine {
      * @throws InvalidLoanPeriodException If the requested loan period is invalid
      */
     private void verifyInputs(String personalCode, Long loanAmount, int loanPeriod)
-            throws InvalidPersonalCodeException, InvalidLoanAmountException, InvalidLoanPeriodException {
+            throws InvalidPersonalCodeException, InvalidLoanAmountException, InvalidLoanPeriodException, NoValidLoanException {
 
         if (!validator.isValid(personalCode)) {
             throw new InvalidPersonalCodeException("Invalid personal ID code!");
         }
+
+
         if ((DecisionEngineConstants.MINIMUM_LOAN_AMOUNT > loanAmount)
                 || (loanAmount > DecisionEngineConstants.MAXIMUM_LOAN_AMOUNT)) {
             throw new InvalidLoanAmountException("Invalid loan amount!");
@@ -202,5 +207,65 @@ public class DecisionEngine {
             throw new InvalidLoanPeriodException("Invalid loan period!");
         }
 
+        // Age checking
+        int customerAge = getCustomerAge(personalCode);
+        int maximumAllowedAge = getMaximumAllowedAge();
+
+        // If customer is underage
+        if (customerAge < 18) {
+            throw new NoValidLoanException("AGE_RESTRICTION:UNDERAGE");
+        }
+
+        // If customer is overage
+        if (customerAge > maximumAllowedAge) {
+            throw new NoValidLoanException("AGE_RESTRICTION:OVERAGE");
+        }
+
+    }
+
+
+    /**
+     * Calculates a customer's age, given an input of a customer's personalCode.
+     * First digit of personal code represents the century the customer is born in
+     * Second to seventh digit is the persons date of birth in the format YYMMDD.
+     * @param personalCode Customer's personal ID code
+     * @return Customer's age in years
+     * @throws InvalidPersonalCodeException If the provided personal ID code is invalid
+     */
+    private int getCustomerAge(String personalCode) throws InvalidPersonalCodeException {
+        // Extract birth date from personal code
+        String birthDateString = personalCode.substring(1, 7);
+
+        int year = Integer.parseInt(birthDateString.substring(0, 2));
+        int month = Integer.parseInt(birthDateString.substring(2, 4));
+        int day = Integer.parseInt(birthDateString.substring(4, 6));
+
+        // Determining the century based on the first digit of the ID code
+        char firstDigit = personalCode.charAt(0);
+        int century;
+        if (firstDigit == '1' || firstDigit == '2') {
+            century = 1800;
+        } else if (firstDigit == '3' || firstDigit == '4') {
+            century = 1900;
+        } else if (firstDigit == '5' || firstDigit == '6') {
+            century = 2000;
+        } else {
+            throw new InvalidPersonalCodeException("Invalid personal ID code format!");
+        }
+
+        int birthYear = century + year;
+        LocalDate birthDate = LocalDate.of(birthYear, month, day);
+        LocalDate currentDate = LocalDate.now();
+
+        return Period.between(birthDate, currentDate).getYears();
+    }
+
+    /**
+     * Calculates the maximum allowed age for a customer. Since the maximum loan period is 48 months (4 years) then the
+     * maximum age can be 78 (our chosen life expectancy) - 4 years
+     * @return Maximum allowed age for a customer
+     */
+    private int getMaximumAllowedAge() {
+        return 78 - 4;
     }
 }
