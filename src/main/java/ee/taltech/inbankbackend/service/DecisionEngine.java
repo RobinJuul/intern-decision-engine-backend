@@ -1,6 +1,5 @@
 package ee.taltech.inbankbackend.service;
 
-import com.github.vladislavgoltjajev.personalcode.locale.estonia.EstonianPersonalCodeValidator;
 import ee.taltech.inbankbackend.config.DecisionEngineConstants;
 import ee.taltech.inbankbackend.exceptions.InvalidLoanAmountException;
 import ee.taltech.inbankbackend.exceptions.InvalidLoanPeriodException;
@@ -9,8 +8,7 @@ import ee.taltech.inbankbackend.exceptions.NoValidLoanException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDate;
-import java.time.Period;
+
 
 /**
  * A service class that provides a method for calculating an approved loan amount and period for a customer.
@@ -72,8 +70,8 @@ public class DecisionEngine {
 
         if (creditScore >= 0.1) {
             // Find Maximum Loan Amount
-            Decision maxLoanDecision = loanAmountCalculator.findMaximumLoanAmount(creditModifier, loanPeriod);
-            if (maxLoanDecision.getLoanAmount() != null && maxLoanDecision.getLoanAmount() > loanAmount) {
+            Decision maxLoanDecision = loanAmountCalculator.findMaximumLoanAmount(loanPeriod, creditModifier);
+            if (maxLoanDecision.getLoanAmount() != null && maxLoanDecision.getLoanAmount() >= loanAmount) {
                 return maxLoanDecision;
             }
             return new Decision(loanAmount.intValue(), loanPeriod, null);
