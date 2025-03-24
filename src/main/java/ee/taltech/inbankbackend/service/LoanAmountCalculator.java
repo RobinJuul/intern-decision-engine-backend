@@ -18,24 +18,24 @@ public class LoanAmountCalculator {
      * is too low, it is highered until a valid amount and period are found.
      * @param creditModifier Credit modifier of the customer
      * @param loanAmount Requested loan amount
-     * @param loanPeriod Requested loan period
+     * @param requestedPeriod Requested loan period
      * @return A Decision object containing the approved loan amount and period, and an error message (if any)
      */
-    public Decision findValidLoanAmount(int creditModifier, Long loanAmount, int loanPeriod) {
+    public Decision findValidLoanAmount(int creditModifier, Long loanAmount, int requestedPeriod) {
         int currentLoanAmount = loanAmount.intValue();
 
-        // Adjusting loan amount, if not valid, decreasing by 100.
+        // Decrease loan amount step by step until it's valid.
         while (currentLoanAmount >= DecisionEngineConstants.MINIMUM_LOAN_AMOUNT) {
-            int testPeriod = loanPeriod;
+            int period = requestedPeriod;
 
-            // Adjusting loan period, if not valid, increasing by 6 months.
-            while (testPeriod <= DecisionEngineConstants.MAXIMUM_LOAN_PERIOD) {
-                double creditScore = creditScoreCalculator.calculateCreditScore(creditModifier, (long) currentLoanAmount, testPeriod);
+            // Try increasing the period if the requested period is not enough.
+            while (period <= DecisionEngineConstants.MAXIMUM_LOAN_PERIOD) {
+                double creditScore = creditScoreCalculator.calculateCreditScore(creditModifier, (long) currentLoanAmount, period);
 
                 if (creditScore >= 0.1) {
-                    return new Decision(currentLoanAmount, testPeriod, null);
+                    return new Decision(currentLoanAmount, period, null);
                 }
-                testPeriod += 6;
+                period += 6;
             }
             currentLoanAmount -= 100;
         }
@@ -44,25 +44,25 @@ public class LoanAmountCalculator {
 
     /**
      * Finds the maximum loan amount the customer qualifies for, within the allowed period.
-     * @param loanPeriod Requested loan period
+     * @param requestedLoanPeriod Requested loan period
      * @param creditModifier The customer's credit modifier
      * @return A Decision object containing the maximum approved loan amount and period, and an error message (if any)
      */
-    public Decision findMaximumLoanAmount(int loanPeriod, int creditModifier) {
+    public Decision findMaximumLoanAmount(int requestedLoanPeriod, int creditModifier) {
         Long maxLoanAmount = Long.valueOf(DecisionEngineConstants.MAXIMUM_LOAN_AMOUNT);
 
-        while (maxLoanAmount >= DecisionEngineConstants.MINIMUM_LOAN_AMOUNT) {
-            int testPeriod = loanPeriod;
+        for (int period = DecisionEngineConstants.MAXIMUM_LOAN_PERIOD; period >= requestedLoanPeriod ; period -= 6) {
+            Long currentAmount = maxLoanAmount;
 
-            while (testPeriod <= DecisionEngineConstants.MAXIMUM_LOAN_PERIOD) {
-                double creditScore = creditScoreCalculator.calculateCreditScore(creditModifier, maxLoanAmount, testPeriod);
+            while (currentAmount >= DecisionEngineConstants.MINIMUM_LOAN_AMOUNT) {
+                double creditScore = creditScoreCalculator.calculateCreditScore(creditModifier, currentAmount, period);
 
                 if (creditScore >= 0.1) {
-                    return new Decision(maxLoanAmount.intValue(), testPeriod, null);
+                    return new Decision(currentAmount.intValue(), period, null);
                 }
-                testPeriod += 6;
+                currentAmount -= 100;
             }
-            maxLoanAmount -= 100;
+
         }
         return new Decision(0, 0, "No valid maximum loan found.");
     }
