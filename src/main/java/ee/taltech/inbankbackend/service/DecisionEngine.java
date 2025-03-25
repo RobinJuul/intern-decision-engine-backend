@@ -79,7 +79,10 @@ public class DecisionEngine {
             Decision validLoanDecision = loanAmountCalculator.findValidLoanAmount(creditModifier, loanAmount, loanPeriod);
             if (validLoanDecision.getLoanAmount() != null && validLoanDecision.getLoanAmount() > 0) {
                 return validLoanDecision;
-            } else {
+            } else if (creditModifier == 0){
+                throw new InvalidLoanAmountException("No valid loan found! You are in debt.");
+            }
+            else {
                 throw new InvalidLoanAmountException("No valid loan found!");
             }
         }
